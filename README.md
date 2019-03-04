@@ -5,4 +5,5 @@ This will be a bootloader like CHUGGA chugga chugga CHUGGA chugga chugga CHOO CH
 Resources:
 
 https://wiki.osdev.org/UEFI#Developing_with_GNU-EFI
+
 https://wiki.osdev.org/UEFI_Bare_Bones
