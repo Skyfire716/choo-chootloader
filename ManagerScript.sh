@@ -77,7 +77,7 @@ function umount_runf {
 
 function compilef {
     clean
-    x86_64-w64-mingw32-gcc -ffreestanding -I$EFIINCLOC -I$EFIINCx86_64LOC -I$EFIINCPROTOCOL -c -o $DIR/build/$PROGRAMM_NAME.o $DIR/src/$PROGRAMM_NAME.c
+    x86_64-w64-mingw32-gcc -ffreestanding -I$EFIINCLOC -I$EFIINCx86_64LOC -I$EFIINCPROTOCOL -I$DIR/src/sl -c -o $DIR/build/$PROGRAMM_NAME.o $DIR/src/$PROGRAMM_NAME.c
     x86_64-w64-mingw32-gcc -ffreestanding -I$EFIINCLOC -I$EFIINCx86_64LOC -I$EFIINCPROTOCOL -c -o $DIR/build/data.o $EFILIBDATA/data.c
     x86_64-w64-mingw32-gcc -nostdlib -Wl,-dll -shared -Wl,--subsystem,10 -e efi_main -o $DIR/build/$PROGRAMM_NAME.efi $DIR/build/$PROGRAMM_NAME.o $DIR/build/data.o -lgcc
 }
