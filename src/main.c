@@ -1,31 +1,56 @@
 #include <efi.h>
 #include <efilib.h>
-#include <sl.h>
+#include <stdlib.h>
 
+short unsigned int LOGO1[21] = {' ', ' ', ' ', ' ', ' ', '+', '+', ' ', ' ', ' ', ' ', ' ', ' ', '+', '-', '-', '-', '-', '-', '-', ' '};
+short unsigned int LOGO2[21] = {' ', ' ', ' ', ' ', ' ', '|', '|', ' ', ' ', ' ', ' ', ' ', ' ', '|', '+', '-', '+', ' ', '|', ' ', ' '};
+short unsigned int LOGO3[21] = {' ', ' ', ' ', '/', '-', '-', '-', '-', '-', '-', '-', '-', '-', '|', '|', ' ', '|', ' ', '|', ' ', ' '};
+short unsigned int LOGO4[21] = {' ', ' ', '+', ' ', '=', '=', '=', '=', '=', '=', '=', '=', ' ', ' ', '+', '-', '+', ' ', '|', ' ', ' '};
 
-#define LOGO1  L"     ++      +------ \n\r"
-#define LOGO2  L"     ||      |+-+ |  \n\r"
-#define LOGO3  L"   /---------|| | |  \n\r"
-#define LOGO4  L"  + ========  +-+ |  \n\r"
+short unsigned int LWHL11[21] = {' ', '_', '|', '-', '-', 'O', '=', '=', '=', '=', '=', '=', '=', '=', 'O', '~', '\\', '-', '+', ' ', ' '};
+short unsigned int LWHL12[21] = {'/', '/', '/', '/', ' ', '\\', '_', '/', ' ', ' ', ' ', ' ', ' ', ' ', '\\', '_', '/', ' ', ' ', ' ', ' '};
 
-#define LWHL11 L" _|--O========O~\\-+  \n\r"
-#define LWHL12 L"//// \\_/      \\_/    \n\r"
+short unsigned int LWHL21[21]  = {' ', '_', '|', '-', '-', '/', 'O', '=', '=', '=', '=', '=', '=', '=', '=', 'O', '\\', '-', '+', ' ', ' '};
+short unsigned int LWHL22[21]  = {'/', '/', '/', '/', ' ', '\\', '_', '/', ' ', ' ', ' ', ' ', ' ', ' ', '\\', '_', '/', ' ', ' ', ' ', ' '};
 
-#define LWHL21 L" _|--/O========O\\-+  \n\r"
-#define LWHL22 L"//// \\_/      \\_/    \n\r"
+short unsigned int LWHL31[21] = {' ', '_', '|', '-', '-', '/', '~', 'O', '=', '=', '=', '=', '=', '=', '=', '=', 'O', '-', '+', ' ', ' '};
+short unsigned int LWHL32[21] = {'/', '/', '/', '/', ' ', '\\', '_', '/', ' ', ' ', ' ', ' ', ' ', ' ', '\\', '_', '/', ' ', ' ', ' ', ' '};
 
-#define LWHL31 L" _|--/~O========O-+  \n\r"
-#define LWHL32 L"//// \\_/      \\_/    \n\r"
+short unsigned int LWHL41[21] = {' ', '_', '|', '-', '-', '/', '~', '\\', '-', '-', '-', '-', '-', '-', '/', '~', '\\', '-', '+', ' ', ' '};
+short unsigned int LWHL42[21] = {'/', '/', '/', '/', ' ', '\\', '_', 'O', '=', '=', '=', '=', '=', '=', '=', '=', 'O', ' ', ' ', ' ', ' '};
 
-#define LWHL41 L" _|--/~\\------/~\\-+  \n\r"
-#define LWHL42 L"//// \\_O========O    \n\r"
+short unsigned int LWHL51[21] = {' ', '_', '|', '-', '-', '/', '~', '\\', '-', '-', '-', '-', '-', '-', '/', '~', '\\', '-', '+', ' ', ' '};
+short unsigned int LWHL52[21] = {'/', '/', '/', '/', ' ', '\\', 'O', '=', '=', '=', '=', '=', '=', '=', '=', 'O', '/', ' ', ' ', ' ', ' '};
 
-#define LWHL51 L" _|--/~\\------/~\\-+  \n\r"
-#define LWHL52 L"//// \\O========O/    \n\r"
+short unsigned int LWHL61[21] = {' ', '_', '|', '-', '-', '/', '~', '\\', '-', '-', '-', '-', '-', '-', '/', '~', '\\', '-', '+', ' ', ' '};
+short unsigned int LWHL62[21] = {'/', '/', '/', '/', ' ', 'O', '=', '=', '=', '=', '=', '=', '=', '=', 'O', '_', '/', ' ', ' ', ' ', ' '};
 
-#define LWHL61 L" _|--/~\\------/~\\-+  \n\r"
-#define LWHL62 L"//// O========O_/    \n\r"
+short unsigned int LCOAL1[21] = {'_', '_', '_', '_', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
+short unsigned int LCOAL2[21] = {'|', ' ', ' ', ' ', '\\', '@', '@', '@', '@', '@', '@', '@', '@', '@', '@', '@', ' ', ' ', ' ', ' ', ' '};
+short unsigned int LCOAL3[21] = {'|', ' ', ' ', ' ', ' ', '\\', '@', '@', '@', '@', '@', '@', '@', '@', '@', '@', '@', '@', '@', '_', ' '};
+short unsigned int LCOAL4[21] = {'|', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '|', ' '};
+short unsigned int LCOAL5[21] = {'|', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '|', ' '};
+short unsigned int LCOAL6[21] = {' ', ' ', ' ', '(', 'O', ')', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '(', 'O', ')', ' ', ' ', ' ', ' ', ' '};
 
+short unsigned int LCAR1[21] = {'_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', ' '};
+short unsigned int LCAR2[21] = {'|', ' ', ' ', '_', '_', '_', ' ', '_', '_', '_', ' ', '_', '_', '_', ' ', '_', '_', '_', ' ', '|', ' '};
+short unsigned int LCAR3[21] = {'|', ' ', ' ', '|', '_', '|', ' ', '|', '_', '|', ' ', '|', '_', '|', ' ', '|', '_', '|', ' ', '|', ' '};
+short unsigned int LCAR4[21] = {'|', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '|', ' '};
+short unsigned int LCAR5[21] = {'|', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '|', ' '};
+short unsigned int LCAR6[21] = {' ', ' ', ' ', '(', 'O', ')', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '(', 'O', ')', ' ', ' ', ' ', ' '};
+
+struct field{
+    int width;
+    int height;
+    short unsigned int [200][200];
+} field;
+
+typedef struct field field_t;
+
+field_t* get_field(int width, int height);
+void finit_field(field_t *field);
+short unsigned int* get_String(field_t field);
+void setCharacter(int x, int y, short unsigned int character, field_t *field);
 
 EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
@@ -57,25 +82,48 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     /*
      * Show the sl
      */
-    Status = ST->ConOut->OutputString(ST->ConOut, LOGO1);
-    if (EFI_ERROR(Status))
+    
+    field_t *field = get_field(10, 10);
+    if(field == NULL){
+        Status = ST->ConOut->OutputString(ST->ConOut, L"Field nicht erstellt\n\r");
+        if (EFI_ERROR(Status)){
+            return Status;
+        }
+    }else{
+        setCharacter(0, 0, 'a', field);
+        
+        finit_field(field);
+    }
+    /*
+    Status = ST->ConOut->OutputString(ST->ConOut, background_generator(6, 21));
+    if (EFI_ERROR(Status)){
         return Status;
-    Status = ST->ConOut->OutputString(ST->ConOut, LOGO2);
-    if (EFI_ERROR(Status))
-        return Status;
-    Status = ST->ConOut->OutputString(ST->ConOut, LOGO3);
-    if (EFI_ERROR(Status))
-        return Status;
-    Status = ST->ConOut->OutputString(ST->ConOut, LOGO4);
-    if (EFI_ERROR(Status))
-        return Status;
-    Status = ST->ConOut->OutputString(ST->ConOut, LWHL11);
-    if (EFI_ERROR(Status))
-        return Status;
-    Status = ST->ConOut->OutputString(ST->ConOut, LWHL12);
-    if (EFI_ERROR(Status))
-        return Status;
+    }
+    */
     
     while ((Status = ST->ConIn->ReadKeyStroke(ST->ConIn, &Key)) == EFI_NOT_READY) ;
     return Status;
+}
+
+field_t* get_field(int width, int height){
+    field_t *field;
+    if((malloc(sizeof(field_t))) == NULL){
+        return NULL;
+    }
+    field->width = width;
+    field->height = height;
+    field->field = malloc(width * height * sizeof(short unsigned int));
+    return field;
+}
+ 
+void setCharacter(int x, int y, short unsigned int character, field_t *field) {
+    if(field->width <= x || field->height <= y || y < 0 || x < 0){
+        return;
+    }
+    field->field[field->width * field->height * y + x] = character;
+}
+
+void finit_field(field_t* field){
+    free(field->field);
+    free(field);
 }

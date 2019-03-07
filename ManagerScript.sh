@@ -77,9 +77,15 @@ function umount_runf {
 
 function compilef {
     clean
-    x86_64-w64-mingw32-gcc -ffreestanding -I$EFIINCLOC -I$EFIINCx86_64LOC -I$EFIINCPROTOCOL -I$DIR/src/sl -c -o $DIR/build/$PROGRAMM_NAME.o $DIR/src/$PROGRAMM_NAME.c
+    echo Compile
+    x86_64-w64-mingw32-gcc -ffreestanding -I$EFIINCLOC -I$EFIINCx86_64LOC -I$EFIINCPROTOCOL -c -o $DIR/build/$PROGRAMM_NAME.o $DIR/src/$PROGRAMM_NAME.c
+    echo Finished
+    echo Compile Data
     x86_64-w64-mingw32-gcc -ffreestanding -I$EFIINCLOC -I$EFIINCx86_64LOC -I$EFIINCPROTOCOL -c -o $DIR/build/data.o $EFILIBDATA/data.c
-    x86_64-w64-mingw32-gcc -nostdlib -Wl,-dll -shared -Wl,--subsystem,10 -e efi_main -o $DIR/build/$PROGRAMM_NAME.efi $DIR/build/$PROGRAMM_NAME.o $DIR/build/data.o -lgcc
+    echo Finished
+    echo Link
+    x86_64-w64-mingw32-gcc -nostdlib -Wl,-dll -shared -Wl,--subsystem,10 -e efi_main -o $DIR/build/$PROGRAMM_NAME.efi $DIR/build/$PROGRAMM_NAME.o -lgcc -lefi -I$EFIINCLOC -I$EFIINCx86_64LOC -I$EFIINCPROTOCOL
+    echo Finished
 }
 
 function rundebugf {
@@ -87,7 +93,7 @@ function rundebugf {
 }
 
 function clean {
-    rm -r $DIR/build/
+    rm -r $DIR/build/  
     mkdir $DIR/build/
 }
 
@@ -120,5 +126,11 @@ then
     cp $DIR/build/$PROGRAMM_NAME.efi $DIR/EmulatoinFolders/hda-contents/EFI/BOOT/BOOTX64.efi
     sleep 1
     rundebugf
+elif [ $MODE == "make" ]
+then
+    mountf
+    cp $DIR/build/$PROGRAMM_NAME.efi /mnt/
+    umountf
+    runf
 fi
 
