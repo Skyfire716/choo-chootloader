@@ -11,11 +11,11 @@ https://wiki.osdev.org/UEFI_Bare_Bones
 https://github.com/mtoyoda/sl
 Copyright 1993,1998,2014 Toyoda Masashi (mtoyoda@acm.org)
 
-``
+```
         /@@@@@@@\
       (@@@@@ # @@@@@\
-     (` \@@@@@@@@~~~~
-    /`    \@@@@@|
+     (  \@@@@@@@@~~~~
+    /     \@@@@@|
    /@@     ''''  \
   /@@@@\          |
  /@@@@@@@\        |
@@ -30,4 +30,4 @@ Copyright 1993,1998,2014 Toyoda Masashi (mtoyoda@acm.org)
 (@@@@         ;
  (@@@@        |
   (__@@_______)
-``
+```
