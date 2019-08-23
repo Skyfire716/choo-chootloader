@@ -1,31 +1,23 @@
-ARCH            = $(shell uname -m | sed s,i[3456789]86,ia32,)
-LIB_PATH        = /usr/lib64
-EFI_INCLUDE     = /usr/include/efi
-EFI_INCLUDES    = -nostdinc -I$(EFI_INCLUDE) -I$(EFI_INCLUDE)/$(ARCH) -I$(EFI_INCLUDE)/protocol
+EFI_CERT = /usr/lib/crt0-efi-x86_64.o
+EFI_LDS = /usr/lib/elf_x86_64_efi.lds
+EFI_HEADER = /usr/include/efi
+EFI_x86_64 = /usr/include/efi/x86_64
+EFI_LIB = /usr/lib
 
-EFI_PATH        = /usr/lib64/gnuefi
-EFI_CRT_OBJS    = /home/jonas/gnu-efi-3.0.9/gnuefi/crt0-efi-$(ARCH).o
-EFI_LDS         = /home/jonas/gnu-efi-3.0.9/gnuefi/elf_$(ARCH)_efi.lds
+choot-chootloader.efi: choot-chootloader.so choot-chootloader.o
+	objcopy -j .text -j .sdata -j .data -j .dynamic -j .dynsym -j .rel -j .rela -j .reloc --target=efi-app-x86_64 choot-chootloader.so choot-chootloader.efi
 
-CFLAGS          = -fno-stack-protector -fpic -fshort-wchar -mno-red-zone $(EFI_INCLUDES)
-ifeq ($(ARCH),x86_64)
-        CFLAGS  += -DEFI_FUNCTION_WRAPPER
-endif
+choot-chootloader.so: choot-chootloader.o sl.o slh.o
+	ld choot-chootloader.o sl.o  $(EFI_CERT) -nostdlib -znocombreloc -T $(EFI_LDS) -shared -Bsymbolic -L $(EFI_LIB) -l:libgnuefi.a -l:libefi.a -o choot-chootloader.so
 
-LDFLAGS         = -nostdlib -znocombreloc -T $(EFI_LDS) -shared -Bsymbolic -L$(EFI_PATH) -L$(LIB_PATH) \
-                  $(EFI_CRT_OBJS) -lefi -lgnuefi
+choot-chootloader.o: choot-chootloader.c
+	gcc choot-chootloader.c -c -fno-stack-protector -fpic -fshort-wchar -mno-red-zone -I $(EFI_HEADER) -I $(EFI_x86_64) -DEFI_FUNCTION_WRAPPER -o choot-chootloader.o
 
-TARGET  = test.efi
-OBJS    = test.o
-SOURCES = test.c
+slh.o: sl.h
+	gcc sl.h -c -fno-stack-protector -fpic -fshort-wchar -mno-red-zone -I $(EFI_HEADER) -I $(EFI_x86_64) -DEFI_FUNCTION_WRAPPER -o slh.o
 
-all: $(TARGET)
+sl.o: sl.c
+	gcc sl.c -c -fno-stack-protector -fpic -fshort-wchar -mno-red-zone -I $(EFI_HEADER) -I $(EFI_x86_64) -DEFI_FUNCTION_WRAPPER -o sl.o
 
-test.so: $(OBJS)
-	$(LD) -o $@ $(LDFLAGS) $^ $(EFI_LIBS)
-
-%.efi: %.so
-	objcopy -j .text -j .sdata -j .data \
-		-j .dynamic -j .dynsym  -j .rel \
-                -j .rela -j .reloc -j .eh_frame \
-                --target=efi-app-$(ARCH) $^ $@ 
+clean: 
+	rm -f choot-chootloader.o choot-chootloader.so sl.o slh.o
