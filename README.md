@@ -1,6 +1,18 @@
 # :steam_locomotive: choo-chootloader :steam_locomotive:
 This will be a bootloader like CHUGGA chugga chugga CHUGGA chugga chugga CHOO CHOOOOOOO :steam_locomotive::steam_locomotive:
 
+How To:
+(1)
+build the project with "make"
+(2)
+run the program "./run.sh"
+(3)
+press enter to autostart the VM
+(4)
+in UEFI Shell enter "fs0:"
+(5)
+run choot-chootloader.efi
+
 
 Resources:
 
