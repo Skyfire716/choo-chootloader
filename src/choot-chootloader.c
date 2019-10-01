@@ -15,7 +15,7 @@
 #define RIGHT 3
 #define LEFT 4
 #define ENTER 0
-
+//:)
 
 static EFI_GUID BlockIoProtocolGUID = BLOCK_IO_PROTOCOL;
 static EFI_GUID DevicePathGUID = DEVICE_PATH_PROTOCOL;
