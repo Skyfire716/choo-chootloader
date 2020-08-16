@@ -277,12 +277,6 @@ void add_smoke(int y, int x)
         S[sum].y = y;    S[sum].x = x;
         S[sum].ptrn = 0; S[sum].kind = sum % 2;
         sum ++;
-	}else{
-	for(i = 0; i < sum; ++i){
-	my_mvaddstr(S[i].y, S[i].x, Eraser[S[i].ptrn]);
-	my_mvaddstr(S[i].y, S[i].x, Smoke[S[i].kind][S[i].ptrn]);
-	}
-	my_mvaddstr(y, x, Smoke[sum % 2][0]);
-	}
+    }
 }
 
