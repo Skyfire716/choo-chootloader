@@ -169,6 +169,42 @@ void printUUID(UINT8 uuid[16]) {
     Print(uuidStr);
 }
 
+
+void printLoaderEntry(struct loader_entries loader){
+    Print(L"Loader ");
+    Print(a2u(loader.title));
+    Print(L"\r\n");
+    Print(L"Version: ");
+    Print(a2u(loader.version));
+    Print(L"\r\nMachineID: ");
+    Print(a2u(loader.machine_id));
+    Print(L"\r\n");
+    Print(L"EFI: \r\n");
+    for(int i = 0; i < loader.efi_index; i++){
+        Print(a2u(loader.efi[i]));
+    }
+    Print(L"Options: \r\n");
+    for(int i = 0; i < loader.options_index; i++){
+        Print(a2u(loader.options[i]));
+    }
+    Print(L"\r\n");
+}
+
+void printGummiBootConf(struct gummiboot_conf conf){
+    Print(L"Gummibootconf\r\n");
+    conf.default_loader[198] = '\r';
+    conf.default_loader[199] = '\n';
+    Print(L"Default: ");
+    Print(a2u(conf.default_loader));
+    Print(L"\r\n");
+    Print(L"Timeout: %u\r\n", conf.timeout);
+    Print(L"Editor: %u\r\n", conf.editor_b);
+    Print(L"Auto-Entries: %u\r\n", conf.auto_entries);
+    Print(L"Auto-Firmware: %u\r\n", conf.auto_firmware);
+    Print(L"Console_mode: %u\r\n", conf.console_mode);
+}
+
+
 void printDevicePath(EFI_DEVICE_PATH *devicePath) {
     EFI_DEVICE_PATH *node = devicePath;
     // https://github.com/vathpela/gnu-efi/blob/master/lib/dpath.c for printing device paths.
