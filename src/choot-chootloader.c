@@ -20,7 +20,35 @@
 static EFI_GUID BlockIoProtocolGUID = BLOCK_IO_PROTOCOL;
 static EFI_GUID DevicePathGUID = DEVICE_PATH_PROTOCOL;
 
+
 char n[1] = "0";
+CHAR16 printable[93] = {' ','!','"','#', '$', '%', '&','\'','(',')','*','+',',','-','_','.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@','A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '~',']', '↑','←','@','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','{','}',};
+
+struct file{
+    EFI_FILE* root;
+    EFI_FILE* file;
+    EFI_STATUS status;
+};
+
+struct gummiboot_conf{
+    char default_loader[200];
+    unsigned int timeout;
+    char editor_b;
+    char auto_entries;
+    char auto_firmware;
+    char console_mode;
+};
+
+struct loader_entries{
+    char title[200];
+    char version[200];
+    char machine_id[200];
+    char efi[20][1024];
+    char options[20][1024];
+    int efi_index;
+    int options_index;
+} entries[100];
+
 
 static CHAR16* a2u(char *str)
 {
