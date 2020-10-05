@@ -286,6 +286,518 @@ void dimensionSelection(){
 
 EFI_STATUS
 EFIAPI
+ProcessFilesInDir (
+    IN EFI_FILE_HANDLE Dir,
+    IN EFI_DEVICE_PATH CONST *DirDp
+)
+{
+    EFI_STATUS Status;
+    EFI_FILE_INFO *FileInfo;
+    CHAR16 *FileName;
+    UINTN FileInfoSize;
+    EFI_DEVICE_PATH *Dp;
+    
+    // big enough to hold EFI_FILE_INFO struct and
+    // the whole file path
+    FileInfo = AllocatePool (MAX_FILE_INFO_SIZE);
+    if (FileInfo == NULL) {
+        return EFI_OUT_OF_RESOURCES;
+    }
+    
+    for (;;) {
+        // get the next file's info. there's an internal position
+        // that gets incremented when you read from a directory
+        // so that subsequent reads gets the next file's info
+        FileInfoSize = MAX_FILE_INFO_SIZE;
+        //Status = Dir->Read (Dir, &FileInfoSize, (VOID *) FileInfo);
+        Status = uefi_call_wrapper(Dir->Read, 1, Dir, &FileInfoSize, (VOID *) FileInfo);
+        if (EFI_ERROR (Status) || FileInfoSize == 0) { //this is how we eventually exit this function when we run out of files
+            if (Status == EFI_BUFFER_TOO_SMALL) {
+                Print (L"EFI_FILE_INFO > MAX_FILE_INFO_SIZE. Increase the size\n");
+            }
+            FreePool (FileInfo);
+            return Status;
+        }
+        
+        // skip files named . or ..
+        if (StrCmp (FileName, L".") == 0 || StrCmp (FileName, L"..") == 0) {
+            continue;
+        }
+        
+        // so we have absolute device path to child file/dir
+        Dp = FileDevicePath (DirDp, FileName);
+        if (Dp == NULL) {
+            FreePool (FileInfo);
+            return EFI_OUT_OF_RESOURCES;
+        }
+        
+        // Do whatever processing on the file
+        //        PerFileFunc (Dir, DirDp, FileInfo, Dp);
+        Print (L"FileName = %s\n", FileInfo->FileName);
+        /*
+        if (FileInfo->Attribute & EFI_FILE_DIRECTORY) {
+            //
+            // recurse
+            //
+            
+            EFI_FILE_HANDLE NewDir;
+            
+            //            Status = Dir->Open (Dir, &NewDir, FileName, EFI_FILE_MODE_READ, 0);
+            Status = uefi_call_wrapper(Dir->Open, 1, Dir, &NewDir, FileName, EFI_FILE_MODE_READ, 0);
+            if (Status != EFI_SUCCESS) {
+                FreePool (FileInfo);
+                FreePool (Dp);
+                return Status;
+            }
+            NewDir->SetPosition (NewDir, 0);
+            
+            Status = ProcessFilesInDir (NewDir,Dp);
+            //            Dir->Close (NewDir);
+            Status = uefi_call_wrapper(Dir->Close, 1, NewDir);
+            if (Status != EFI_SUCCESS) {
+                FreePool (FileInfo);
+                FreePool (Dp);
+                return Status;
+            }
+        }
+        */
+        FreePool (Dp);
+    }
+}
+/*
+ * EFI_STATUS
+ * EFIAPI PerFileFunc (
+ *    IN EFI_FILE_HANDLE Dir,
+ *    IN EFI_DEVICE_PATH *DirDp,
+ *    IN EFI_FILE_INFO *FileInfo,
+ *    IN EFI_DEVICE_PATH *Dp
+ * )
+ * {
+ *    EFI_STATUS Status;
+ *    EFI_FILE_HANDLE File;
+ *    
+ *    Print (L"Path = %s FileName = %s\n", ConvertDevicePathToText(DirDp, TRUE,
+ *                                                                 TRUE), FileInfo->FileName);
+ *    
+ *    // read the file into a buffer
+ *    Status = Dir->Open (Dir, &File, FileInfo->FileName, EFI_FILE_MODE_READ,
+ *                        0);
+ *    if (EFI_ERROR (Status)) {
+ *        return Status;
+ *    }
+ *    
+ *    // reset position just in case
+ *    File->SetPosition (File, 0);
+ *    
+ *    // ****Do stuff on the file here****
+ *    
+ *    Dir->Close (File);
+ *    
+ *    return EFI_SUCCESS;
+ * }
+ */
+
+struct gummiboot_conf parseGummibootConf(struct file file){
+    struct gummiboot_conf conf;
+    char buffer[1024] = "";
+    UINTN bufferSize = 1024;
+    file.status = uefi_call_wrapper(file.root->Read, 1, file.file, &bufferSize, &buffer);
+    char line[100] = "";
+    int bufferindex = 0;
+    int index = 0;
+    SCANLINES : index = 0;
+    for(int i = 0; i < 100; i++){
+            line[i] = ' ';
+        }
+    if(buffer[bufferindex] == '#'){
+        while(buffer[bufferindex] != '\r' && buffer[bufferindex] != '\n'){
+            bufferindex++;
+        }
+        if(buffer[bufferindex] == '\n'){
+            bufferindex++;
+        }
+    }else{
+        while(buffer[bufferindex] != '\r' && buffer[bufferindex] != '\n' && index < 98){
+            line[index] = buffer[bufferindex];
+            index++;
+            bufferindex++;
+        }
+        if(buffer[bufferindex] == '\n'){
+            bufferindex++;
+        }
+    }
+        if(matchstring(line, "default", 7)){
+            char name[93] = "";
+            for(int i = 9; i < index;i++){
+                name[i - 9] = line[i];
+            }
+            for(int i = 0; i < 93; i++){
+                conf.default_loader[i] = name[i];
+            }
+        }
+        if(matchstring(line, "timeout", 7)){
+            char nummer[93] = "";
+            for(int i = 7; i < index;i++){
+                nummer[i-7]=line[i];
+            }
+            conf.timeout = string_to_int(nummer, 93);
+        }
+        if(matchstring(line, "editor", 6)){
+            if(matchstring_i(line, "no", 2, 8)){
+                conf.editor_b = 0;
+            }else if(matchstring_i(line, "yes", 3, 8)){
+                conf.editor_b = 1;
+            }else{
+                Print(L"Unknown Editor Config\r\n");
+            }
+        }
+        if(matchstring(line, "auto-entries", 12)){
+            char boolval[88] = "";
+            for(int i = 0; i < index - 12; i++){
+                boolval[i - 12] = line[i];
+            }
+            conf.auto_entries = string_to_int(boolval, 88);
+        }
+        if(matchstring(line, "auto-firmware", 13)){
+            char boolval[87] = "";
+            for(int i = 0; i < index - 12; i++){
+                boolval[i - 12] = line[i];
+            }
+            conf.auto_firmware = string_to_int(boolval, 87);
+        }
+        if(matchstring(line, "console_mode", 12)){
+            if(matchstring_i(line, "auto", 4, 15)){
+                conf.console_mode = 0;
+            }else if(matchstring_i(line, "max", 3, 15)){
+                conf.console_mode = 0;
+            }else if(matchstring_i(line, "keep", 4, 15)){
+                conf.console_mode = 0;
+            }else{
+            char boolval[87] = "";
+            for(int i = 0; i < index - 13; i++){
+                boolval[i - 13] = line[i];
+            }
+            conf.console_mode = string_to_int(boolval, 87);
+            }
+        }
+        if(bufferindex < bufferSize){
+            goto SCANLINES;
+        }
+        return conf;
+}
+
+void closeFile(struct file file){
+    file.status = uefi_call_wrapper(file.root->Close, 1, file.root);    
+}
+
+void platzhalter(struct file file){
+    char buffer[100] = "";
+    UINTN bufferSize = 20;
+    file.status = uefi_call_wrapper(file.root->Read, 1, file.file, &bufferSize, &buffer);
+    char l[100];
+    int index3 = map(bufferSize, l, 0);
+    index3 = mystrcpy(l, index3, L" Bytes gelesen\r\n", 18);
+    Print(a2u(l));
+    Print(a2u(buffer));
+    Print(L"\r\n");
+    buffer[20] = "A";
+    buffer[21] = "B";
+    buffer[22] = "C";
+    bufferSize = 22;
+    file.status = uefi_call_wrapper(file.root->Write, 1, file.file, &bufferSize, &buffer);
+    file.status = uefi_call_wrapper(file.root->Flush, 1, file.file);    
+}
+
+struct file openFile(EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* fs, CHAR16* name){
+    Print(name);
+    Print(L"\n\r"); 
+    EFI_STATUS efiStatus;
+    EFI_FILE* root = NULL;
+    efiStatus = uefi_call_wrapper(fs->OpenVolume, 1, fs, &root);
+    if (efiStatus == EFI_SUCCESS) {
+        Print(L"Succesfully Opened\r\n");
+    }
+    if (efiStatus == EFI_UNSUPPORTED){
+        Print(L"Unsupported\r\n");
+    }
+    if(efiStatus == EFI_NO_MEDIA){
+        Print(L"NO MEDI\r\n");
+    }
+    if(efiStatus == EFI_DEVICE_ERROR){
+        Print(L"Device Error\r\n");
+    }
+    if(efiStatus == EFI_VOLUME_CORRUPTED){
+        Print(L"CorruptVolum\r\n");
+    }
+    if(efiStatus == EFI_ACCESS_DENIED){
+        Print(L"EFI_ACCESS_DENIED\r\n");
+    }
+    if(efiStatus == EFI_OUT_OF_RESOURCES){
+        Print(L"OUT_OF_RESOURCES\r\n");
+    }
+    if(efiStatus == EFI_MEDIA_CHANGED){
+        Print(L"Media Changed\r\n");
+    }
+    Print(L"Something Else?\r\n");
+    Print(L"Try to open File\r\n");
+    //EFI_FILE* loaderEntries = NULL;
+    //efiStatus = uefi_call_wrapper(root->Open, 1, root, &loaderEntries, L"loader\\entries", EFI_FILE_MODE_READ | //EFI_FILE_MODE_WRITE, EFI_FILE_READ_ONLY);
+    //efiStatus = ProcessFilesInDir(loaderEntries, Dp);
+    
+    
+    EFI_FILE* token = NULL;
+    efiStatus = uefi_call_wrapper(root->Open, 1, root, &token, name, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, EFI_FILE_READ_ONLY);
+    if(efiStatus == EFI_SUCCESS){
+        Print(L"File Successfully Opened\r\n");
+        /*
+         *        char buffer[100] = "";
+         *        UINTN bufferSize = 20;
+         *        efiStatus = uefi_call_wrapper(root->Read, 1, token, &bufferSize, &buffer);
+         *        char l[100];
+         *        int index3 = map(bufferSize, l, 0);
+         *        index3 = mystrcpy(l, index3, L" Bytes gelesen\r\n", 18);
+         *        Print(a2u(l));
+         *        Print(a2u(buffer));
+         *        Print(L"\r\n");
+         *        buffer[20] = "A";
+         *        buffer[21] = "B";
+         *        buffer[22] = "C";
+         *        bufferSize = 22;
+         *        efiStatus = uefi_call_wrapper(root->Write, 1, token, &bufferSize, &buffer);
+         *        efiStatus = uefi_call_wrapper(root->Flush, 1, token);
+         */
+    }else {
+        Print(L"Couldn't Open\r\n");
+        if(efiStatus == EFI_NOT_FOUND){
+            Print(name);
+            Print(L" not found\r\n");
+        }
+        if(efiStatus == EFI_NO_MEDIA){
+            Print(L"No Media\r\n");
+        }
+        if (efiStatus == EFI_MEDIA_CHANGED){
+            Print(L"Media Changed\r\n");
+        }
+        if (efiStatus == EFI_DEVICE_ERROR){
+            Print(L"Device Error\r\n");
+        }
+        if (efiStatus == EFI_VOLUME_CORRUPTED){
+            Print(L"Volume Corrupted\r\n");
+        }
+        if (efiStatus == EFI_WRITE_PROTECTED){
+            Print(L"WriteProtected\r\n");
+        }
+        if (efiStatus == EFI_ACCESS_DENIED){
+            Print(L"Access Dienied\r\n");
+        }
+        if (efiStatus == EFI_OUT_OF_RESOURCES){
+            Print(L"Out of Resources\r\n");
+        }
+        if (efiStatus == EFI_VOLUME_FULL){
+            Print(L"Volume Full\r\n");
+        }
+        Print(L"No Info?\r\n");
+    }
+    struct file loaded_file;
+    loaded_file.root = root;
+    loaded_file.file = token;
+    loaded_file.status = efiStatus;
+    return loaded_file;
+}
+
+int isPrintable(CHAR16 c){
+   for(int i = 0; i < 93; i++){
+        if(c == printable[i]){
+            return 1;   
+        }
+   }
+   return 0;
+}
+
+int stringLen(CHAR16* string){
+    int length = 0;
+    while(isPrintable(string[length])){
+        length++;
+    }
+    return length;
+}
+
+void stringAppend(CHAR16* a, CHAR16* b, CHAR16* dst){
+    for(int i = 0; i < stringLen(a); i++){
+        dst[i] = a[i];
+    }
+    dst[stringLen(a)] = '\\';
+    for(int i = 1; i < stringLen(b) + 1; i++){
+        dst[stringLen(a) + i] = b[i-1];
+    }
+}
+
+int parseEntries(struct loader_entries loaders[], int loaderIndex, EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* fs, CHAR16* filename){
+    if(((char)filename[0]) == '.'){
+        return 0;
+    }
+    loaders[loaderIndex].efi_index = 0;
+    loaders[loaderIndex].options_index = 0;
+    CHAR16 name[100] = L"loader\\entries\\";
+    for(int i = 0; i < stringLen(filename); i++){
+        name[i + 15] = filename[i];
+    }
+    struct file file = openFile(fs, name);
+    char buffer[1024] = "";
+    UINTN bufferSize = 1024;
+    file.status = uefi_call_wrapper(file.root->Read, 1, file.file, &bufferSize, &buffer);
+    char line[1024] = "";
+    int bufferindex = 0;
+    int index = 0;
+    SCANLINES : index = 0;
+    for(int i = 0; i < 1024; i++){
+            line[i] = ' ';
+        }
+    if(buffer[bufferindex] == '#'){
+        while(buffer[bufferindex] != '\r' && buffer[bufferindex] != '\n'){
+            bufferindex++;
+        }
+        if(buffer[bufferindex] == '\n'){
+            bufferindex++;
+        }
+    }else{
+        while(buffer[bufferindex] != '\r' && buffer[bufferindex] != '\n' && index < 98){
+            line[index] = buffer[bufferindex];
+            index++;
+            bufferindex++;
+        }
+        if(buffer[bufferindex] == '\n'){
+            bufferindex++;
+        }
+    }
+    line[index++] = '\r';
+    line[index++] = '\n';
+    if(matchstring(line, "title", 5)){
+        for(int i = 6; i < index; i++){
+            loaders[loaderIndex].title[i-6] = line[i];
+        }
+    }
+    if(matchstring(line, "version", 7)){
+        for(int i = 8; i < index; i++){
+            loaders[loaderIndex].version[i-8] = line[i];
+        }
+    }
+    if(matchstring(line, "machine-id", 10)){
+        for(int i = 11; i < index; i++){
+            loaders[loaderIndex].machine_id[i-11] = line[i];
+        }
+    }
+    if(matchstring(line, "efi", 3) || matchstring(line, "linux", 5) || matchstring(line, "initrd", 6)){
+        int start = 0;
+        while(line[start] != ' ' && line[start] != '\t'){
+            start++;
+        }
+        start++;
+        while(line[start] == ' ' || line[start] == '\t'){
+            start++;
+        }
+        for(int i = start; i < index; i++){
+            loaders[loaderIndex].efi[loaders[loaderIndex].efi_index][i-start] = line[i];
+        }
+        loaders[loaderIndex].efi_index++;
+    }
+    if(matchstring(line, "options", 7)){
+        for(int i = 8; i < index; i++){
+            loaders[loaderIndex].options[loaders[loaderIndex].options_index][i-8] = line[i];
+        }
+        loaders[loaderIndex].options_index++;
+    }
+        if(bufferindex < bufferSize){
+            goto SCANLINES;
+        }
+    closeFile(file);
+    return 1;
+}
+
+int scanEntries(struct loader_entries loaders[], EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* fs, IN EFI_FILE_HANDLE Dir, IN EFI_DEVICE_PATH CONST *DirDp){
+    EFI_STATUS Status;
+    EFI_FILE_INFO *FileInfo;
+    CHAR16 *FileName;
+    UINTN FileInfoSize;
+    EFI_DEVICE_PATH *Dp;
+    
+    FileInfo = AllocatePool (MAX_FILE_INFO_SIZE);
+    if (FileInfo == NULL) {
+        return EFI_OUT_OF_RESOURCES;
+    }
+    int index = 0;
+    for (;;) {
+        FileInfoSize = MAX_FILE_INFO_SIZE;
+        Status = uefi_call_wrapper(Dir->Read, 1, Dir, &FileInfoSize, (VOID *) FileInfo);
+        if (EFI_ERROR (Status) || FileInfoSize == 0) { //this is how we eventually exit this function when we run out of files
+            if (Status == EFI_BUFFER_TOO_SMALL) {
+                Print (L"EFI_FILE_INFO > MAX_FILE_INFO_SIZE. Increase the size\n");
+            }
+            FreePool (FileInfo);
+            return index;
+            //return Status;
+        }
+        
+        // so we have absolute device path to child file/dir
+        Dp = FileDevicePath (DirDp, FileName);
+        if (Dp == NULL) {
+            FreePool (FileInfo);
+            return index;
+            //return EFI_OUT_OF_RESOURCES;
+        }
+        
+        // Do whatever processing on the file
+        //        PerFileFunc (Dir, DirDp, FileInfo, Dp);
+        index += parseEntries(loaders, index, fs, FileInfo->FileName);
+        FreePool (Dp);
+    }
+    return index;
+}
+
+STATIC EFI_STATUS
+AppendFilePath(CONST CHAR16 *Path, CHAR16 **FilePath)
+{
+	if (!Path || !FilePath){
+        Print(L"Invalid Parametr\r\n");
+		return EFI_INVALID_PARAMETER;
+    }  
+	CHAR16 *FilePathPrefix = L"EFI\\";
+	if (!FilePathPrefix)
+		Print(L"Error AppendFilePath\r\n");
+
+    Print(L"StrAppend\r\n");
+	stringAppend(FilePathPrefix, Path, FilePath);
+    Print(L"DONe\r\n");
+	return EFI_SUCCESS;
+}
+
+
+EFI_STATUS
+EfiDevicePathCreate(CONST CHAR16 *Path, CHAR16 **FilePath)
+{
+	if (!Path || !FilePath)
+		return EFI_INVALID_PARAMETER;
+
+	EFI_STATUS Status = EFI_OUT_OF_RESOURCES;
+
+	if (Path[0] != L'\\') {
+        Print(L"Appendfile\r\n");
+		Status = AppendFilePath(Path, FilePath);
+        Print(L"Appendfile Done\r\n");
+		if (EFI_ERROR(Status))
+			return Status;
+	} else{
+        Print(L"StrDup\r\n");
+		*FilePath = StrDup(Path);
+    }
+	if (!*FilePath)
+		return Status;
+    Print(L"Finish\r\n");
+	return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
     InitializeLib(ImageHandle, SystemTable);
