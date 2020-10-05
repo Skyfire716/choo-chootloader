@@ -41,6 +41,52 @@ int mystrcpy(char* d, int index, CHAR16* s, int length){
     return index;
 }
 
+
+int matchstring(char* a, char* b, int length){
+    return matchstring_i(a, b, length, 0);
+}
+
+int matchstring_i(char* a, char* b, int length, int index){
+    for(int i = index; i < length; i++){
+        if (a[i] != b[i]){
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int string_to_int(char* s, int length){
+    int number = 0;
+    for(int i = 0; i < length; i++){
+        if(!(s[i] == ' ' && number == 0)){
+        number = number * 10;
+    if(s[i] == '0'){
+        
+    }else if(s[i] == '1'){
+        number += 1;
+    }else if(s[i] == '2'){
+        number += 2;
+    }else if(s[i] == '3'){
+        number += 3;
+    }else if(s[i] == '4'){
+        number += 4;
+    }else if(s[i] == '5'){
+        number += 5;
+    }else if(s[i] == '6'){
+        number += 6;
+    }else if(s[i] == '7'){
+        number += 7;
+    }else if(s[i] == '8'){
+        number += 8;
+    }else if(s[i] == '9'){
+        number += 9;
+    }else{
+        return number/10;
+    }
+    }}
+    return number;
+}
+
 int map(int i, char* s, int index)
 {
     if(i < 0){
