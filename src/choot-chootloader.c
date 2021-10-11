@@ -1084,3 +1084,1229 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 //        }
     return EFI_SUCCESS;
 }
+
+
+static inline void PlotPixel_32bpp(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel)
+{
+    if(x >= 0 && y >= 0 && x < screenWidth && y < screenHeight){
+        *((uint32_t*)(gop->Mode->FrameBufferBase + 4 * gop->Mode->Info->PixelsPerScanLine * y + 4 * x)) = pixel;
+    }
+}
+
+static inline void PlotLine_32bpp(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x0, int y0, int x1, int y1, uint32_t pixel){
+  int dx =  abs(x1-x0), sx = x0<x1 ? 1 : -1;
+  int dy = -abs(y1-y0), sy = y0<y1 ? 1 : -1;
+  int err = dx+dy, e2; /* error value e_xy */
+  while (1) {
+    //setPixel(x0,y0);
+    PlotPixel_32bpp(gop, x0, y0, pixel);
+    if (x0==x1 && y0==y1) break;
+    e2 = 2*err;
+    if (e2 > dy) { err += dy; x0 += sx; } /* e_xy+e_x > 0 */
+    if (e2 < dx) { err += dx; y0 += sy; } /* e_xy+e_y < 0 */
+  }   
+}
+
+static inline void PlotRect_32bpp(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x0, int y0, int width, int height, uint32_t pixel){
+    PlotLine_32bpp(gop, x0, y0, x0 + width, y0, pixel);
+    PlotLine_32bpp(gop, x0, y0, x0, y0 + height, pixel);
+    PlotLine_32bpp(gop, x0, y0 + height, x0 + width, y0 + height, pixel);
+    PlotLine_32bpp(gop, x0 + width, y0, x0 + width, y0 + height, pixel);
+}
+
+static inline void PlotFilledRect_32bpp(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, int width, int height, uint32_t pixel){
+    for(int i = y; i < y + height; i++){
+        for(int j = x; j < x + width; j++){
+            PlotPixel_32bpp(gop, j, i, pixel);
+        }
+    }
+}
+
+static inline void PlotCircle_32bpp(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x0, int y0, int radius, uint32_t pixel)
+  {
+    int f = 1 - radius;
+    int ddF_x = 0;
+    int ddF_y = -2 * radius;
+    int x = 0;
+    int y = radius;
+
+    PlotPixel_32bpp(gop, x0, y0 + radius, pixel);
+    PlotPixel_32bpp(gop, x0, y0 - radius, pixel);
+    PlotPixel_32bpp(gop, x0 + radius, y0, pixel);
+    PlotPixel_32bpp(gop, x0 - radius, y0, pixel);
+
+    while(x < y)
+    {
+      if(f >= 0)
+      {
+        y--;
+        ddF_y += 2;
+        f += ddF_y;
+      }
+      x++;
+      ddF_x += 2;
+      f += ddF_x + 1;
+
+      PlotPixel_32bpp(gop, x0 + x, y0 + y, pixel);
+      PlotPixel_32bpp(gop, x0 - x, y0 + y, pixel);
+      PlotPixel_32bpp(gop, x0 + x, y0 - y, pixel);
+      PlotPixel_32bpp(gop, x0 - x, y0 - y, pixel);
+      PlotPixel_32bpp(gop, x0 + y, y0 + x, pixel);
+      PlotPixel_32bpp(gop, x0 - y, y0 + x, pixel);
+      PlotPixel_32bpp(gop, x0 + y, y0 - x, pixel);
+      PlotPixel_32bpp(gop, x0 - y, y0 - x, pixel);
+    }
+  }
+  
+static inline void PlotEllipse_32bpp(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int xm, int ym, int a, int b, uint32_t pixel)
+{
+   int dx = 0, dy = b; /* im I. Quadranten von links oben nach rechts unten */
+   long a2 = a*a, b2 = b*b;
+   long err = b2-(2*b-1)*a2, e2; /* Fehler im 1. Schritt */
+
+   do {
+       PlotPixel_32bpp(gop, xm+dx, ym+dy, pixel); /* I. Quadrant */
+       PlotPixel_32bpp(gop, xm-dx, ym+dy, pixel); /* II. Quadrant */
+       PlotPixel_32bpp(gop, xm-dx, ym-dy, pixel); /* III. Quadrant */
+       PlotPixel_32bpp(gop, xm+dx, ym-dy, pixel); /* IV. Quadrant */
+
+       e2 = 2*err;
+       if (e2 <  (2*dx+1)*b2) { dx++; err += (2*dx+1)*b2; }
+       if (e2 > -(2*dy-1)*a2) { dy--; err -= (2*dy-1)*a2; }
+   } while (dy >= 0);
+
+   while (dx++ < a) { /* fehlerhafter Abbruch bei flachen Ellipsen (b=1) */
+       PlotPixel_32bpp(gop, xm+dx, ym, pixel); /* -> Spitze der Ellipse vollenden */
+       PlotPixel_32bpp(gop, xm-dx, ym, pixel);
+   }
+}
+
+static inline void PlotEllipseHalfe_32bpp(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int xm, int ym, int a, int b, uint32_t pixel, char side)
+{
+   int dx = 0, dy = b; /* im I. Quadranten von links oben nach rechts unten */
+   long a2 = a*a, b2 = b*b;
+   long err = b2-(2*b-1)*a2, e2; /* Fehler im 1. Schritt */
+   do {
+       if(side){
+        PlotPixel_32bpp(gop, xm+dx, ym+dy, pixel); /* I. Quadrant */
+        PlotPixel_32bpp(gop, xm+dx, ym-dy, pixel); /* IV. Quadrant */
+       }else {
+        PlotPixel_32bpp(gop, xm-dx, ym+dy, pixel); /* II. Quadrant */
+        PlotPixel_32bpp(gop, xm-dx, ym-dy, pixel); /* III. Quadrant */
+       }
+       
+
+       e2 = 2*err;
+       if (e2 <  (2*dx+1)*b2) { dx++; err += (2*dx+1)*b2; }
+       if (e2 > -(2*dy-1)*a2) { dy--; err -= (2*dy-1)*a2; }
+   } while (dy >= 0);
+
+   while (dx++ < a) { /* fehlerhafter Abbruch bei flachen Ellipsen (b=1) */
+       if(side){
+       PlotPixel_32bpp(gop, xm+dx, ym, pixel); /* -> Spitze der Ellipse vollenden */
+       }else{
+       PlotPixel_32bpp(gop, xm-dx, ym, pixel);
+       }
+   }
+}
+
+static inline void Plot_UnderScore(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x, y + fieldHeight * 0.4375, x + fieldWidth * 0.8333333333, y + fieldHeight * 0.4375, pixel);
+}
+
+static inline void Plot_Equal(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x, y - fieldHeight * 0.0625, x + fieldWidth * 0.8333333333, y - fieldHeight * 0.0625, pixel);
+    PlotLine_32bpp(gop, x, y + fieldHeight * 0.125, x + fieldWidth * 0.8333333333, y + fieldHeight * 0.125, pixel);
+}
+
+static inline void Plot_Storke(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x + fieldWidth * 0.6666666, y + fieldHeight * 0.5, x + fieldWidth * 0.6666666, y - fieldHeight * 0.375, pixel);
+}
+
+static inline void Plot_Slash(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x, y + fieldHeight * 0.4375, x + fieldWidth * 0.8333333333, y - fieldHeight * 0.375, pixel);
+}
+
+static inline void Plot_BackSlash(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x, y - fieldHeight * 0.375, x + fieldWidth * 0.8333333333, y + fieldHeight * 0.4375, pixel);       
+}
+
+static inline void Plot_Plus(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x, y + fieldHeight * 0.125, x + fieldWidth * 0.8333333333, y + fieldHeight * 0.125, pixel);
+    PlotLine_32bpp(gop, x + 0.5 * fieldWidth, y + 0.25 * fieldHeight, x + 0.5 * fieldWidth, y + 0.4735 * fieldHeight, pixel);
+}
+
+static inline void Plot_Y(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    
+}
+
+static inline void Plot_At(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    
+}
+
+static inline void Plot_DoubleDot(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    
+}
+
+static inline void Plot_i(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    
+}
+
+static inline void Plot_Dot(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    
+}
+
+static inline void Plot_Apos(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    
+}
+
+static inline void Plot_BackApos(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    
+}
+
+static inline void Plot_O(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotEllipse_32bpp(gop, x + fieldWidth * 0.5, y + fieldHeight * 0.111111111, fieldWidth * 0.333333333, fieldHeight * 0.388888, pixel);
+}
+
+static inline void Plot_Os(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotEllipse_32bpp(gop, x, y, fieldWidth * 0.5, fieldHeight * 0.375, pixel);
+}
+
+static inline void Plot_I(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x + fieldWidth * 0.5, y + fieldHeight * 0.4375, x + fieldWidth * 0.5, y - fieldHeight * 0.25, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.25, y + fieldHeight * 0.4375, x + fieldWidth * 0.75, y + fieldHeight * 0.4375, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.25, y - fieldHeight * 0.25, x + fieldWidth * 0.75, y - fieldHeight * 0.25, pixel);
+}
+
+static inline void Plot_Score(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x, y + fieldHeight * 0.125, x + fieldWidth * 0.8333333333, y + fieldHeight * 0.125, pixel);
+}
+
+static inline void Plot_Bracket(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotEllipseHalfe_32bpp(gop, x + fieldWidth * 0.5, y + fieldHeight * 0.125, fieldWidth * 0.5, fieldHeight * 0.375, pixel, 0);
+}
+
+static inline void Plot_BracketClose(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotEllipseHalfe_32bpp(gop, x + fieldWidth * 0.0833333333, y + fieldHeight * 0.125, fieldWidth * 0.5, fieldHeight * 0.375, pixel, 1);
+}
+
+static inline void Plot_CornerBracket(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x + fieldWidth * 0.333333333, y + fieldHeight * 0.5, x + fieldWidth * 0.333333333, y - fieldHeight * 0.375, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.333333333, y + fieldHeight * 0.5, x + fieldWidth * 0.75, y + fieldHeight * 0.5, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.333333333, y - fieldHeight * 0.375, x + fieldWidth * 0.75, y - fieldHeight * 0.375, pixel);
+}
+
+static inline void Plot_CornerBracketClose(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x + fieldWidth * 0.6666666, y + fieldHeight * 0.5, x + fieldWidth * 0.6666666, y - fieldHeight * 0.375, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.25, y + fieldHeight * 0.5, x + fieldWidth * 0.6666666, y + fieldHeight * 0.5, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.25, y - fieldHeight * 0.375, x + fieldWidth * 0.6666666, y - fieldHeight * 0.375, pixel);
+}
+
+static inline void Plot_H(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x + fieldWidth * 0.25, y + fieldHeight * 0.4375, x + fieldWidth * 0.25, y - fieldHeight * 0.25, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.75, y + fieldHeight * 0.4375, x + fieldWidth * 0.75, y - fieldHeight * 0.25, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.25, y + fieldHeight * 0.0625, x + fieldWidth * 0.75, y + fieldHeight * 0.0625, pixel);
+}
+
+static inline void Plot_A(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotLine_32bpp(gop, x + fieldWidth * 0.25, y + fieldHeight * 0.4375, x + fieldWidth * 0.5, y - fieldHeight * 0.25, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.75, y + fieldHeight * 0.4375, x + fieldWidth * 0.5, y - fieldHeight * 0.25, pixel);
+    PlotLine_32bpp(gop, x + fieldWidth * 0.4166666, y + fieldHeight * 0.0625, x + fieldWidth * 0.6666666, y + fieldHeight * 0.0625, pixel);
+}
+
+static inline void Plot_B(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    x += 0.25 * fieldWidth;
+    PlotLine_32bpp(gop, x + fieldWidth * 0.0833333333, y + fieldHeight * 0.4375, x + fieldWidth * 0.0833333333, y - fieldHeight * 0.25, pixel);
+    PlotEllipseHalfe_32bpp(gop, x + fieldWidth * 0.0833333333, y + fieldHeight * 0.333333333, fieldWidth * 0.5, fieldHeight * 0.2222222, pixel, 1);
+    PlotEllipseHalfe_32bpp(gop, x + fieldWidth * 0.0833333333, y, fieldWidth * 0.5, fieldHeight * 0.2222222, pixel, 1);
+}
+
+static inline void Plot_C(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    x += 0.25 * fieldWidth;
+    PlotEllipseHalfe_32bpp(gop, x + fieldWidth * 0.5, y + fieldHeight * 0.125, fieldWidth * 0.5, fieldHeight * 0.375, pixel, 0);
+}
+
+static inline void Plot_D(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    x += 0.25 * fieldWidth;
+    PlotLine_32bpp(gop, x + fieldWidth * 0.0833333333, y + fieldHeight * 0.4375, x + fieldWidth * 0.0833333333, y - fieldHeight * 0.25, pixel);
+    PlotEllipseHalfe_32bpp(gop, x + fieldWidth * 0.0833333333, y + fieldHeight * 0.125, fieldWidth * 0.5, fieldHeight * 0.375, pixel, 1);
+}
+
+static inline void Plot_Tilde(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    PlotPixel_32bpp(gop, x + 7, y, pixel);
+    PlotPixel_32bpp(gop, x + 7, y + 1, pixel);
+    PlotPixel_32bpp(gop, x + 6, y + 2, pixel);
+    PlotPixel_32bpp(gop, x + 5, y + 2, pixel);
+    PlotPixel_32bpp(gop, x + 4, y + 1, pixel);
+    PlotPixel_32bpp(gop, x + 4, y, pixel);
+    PlotPixel_32bpp(gop, x + 3, y - 1, pixel);
+    PlotPixel_32bpp(gop, x + 2, y - 2, pixel);
+    PlotPixel_32bpp(gop, x + 1, y - 2, pixel);
+    PlotPixel_32bpp(gop, x, y - 1, pixel);
+    PlotPixel_32bpp(gop, x, y, pixel);
+}
+
+static inline void Plot_Char(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, char letter, uint32_t pixel){
+    if(letter == ' '){
+        return;
+    }
+    switch(letter){
+        case '_':
+            Plot_UnderScore(gop, x, y, pixel);
+            break;
+        case '-':
+            Plot_Score(gop, x, y, pixel);
+            break;
+        case '=':
+            Plot_Equal(gop, x, y, pixel);
+            break;
+        case 'D':
+            Plot_D(gop, x, y, pixel);
+            break;
+        case '/':
+            Plot_Slash(gop, x, y, pixel);
+            break;
+        case '\\':
+            Plot_BackSlash(gop, x, y, pixel);
+            break;
+        case '(':
+            Plot_Bracket(gop, x, y, pixel);
+            break;
+        case ')':
+            Plot_BracketClose(gop, x, y, pixel);
+            break;
+        case '[':
+            Plot_CornerBracket(gop, x, y, pixel);
+            break;
+        case ']':
+            Plot_CornerBracketClose(gop, x, y, pixel);
+            break;
+        case 'I':
+            Plot_I(gop, x, y, pixel);
+            break;
+        case 'i':
+            Plot_i(gop, x, y, pixel);
+            break;
+        case '@':
+            Plot_At(gop, x, y, pixel);
+            break;
+        case 'A':
+            Plot_A(gop, x, y, pixel);
+            break;
+        case 'B':
+            Plot_B(gop, x, y, pixel);
+            break;
+        case 'C':
+            Plot_C(gop, x, y, pixel);
+            break;
+        case '`':
+            Plot_BackApos(gop, x, y, pixel);
+            break;
+        case 'H':
+            Plot_H(gop, x, y, pixel);
+            break;
+        case '|':
+            Plot_Storke(gop, x, y, pixel);
+            break;
+        case '~':
+            Plot_Tilde(gop, x, y, pixel);
+            break;
+        case 'O':
+            Plot_O(gop, x, y, pixel);
+            break;
+        case '.':
+            Plot_Dot(gop, x, y, pixel);
+            break;
+        case ':':
+            Plot_DoubleDot(gop, x, y, pixel);
+            break;
+        case 'Y':
+            Plot_Y(gop, x, y, pixel);
+            break;
+        case '+':
+            Plot_Plus(gop, x, y, pixel);
+            break;
+        case 'o':
+            Plot_Os(gop, x, y, pixel);
+            break;
+        case '\'':
+            Plot_Apos(gop, x, y, pixel);
+            break;
+        default:
+            break;
+    }
+}
+
+static inline void Plot_String(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, char *str, int length, uint32_t pixel){
+    int i = 0;
+    if(x < 0){
+        i = (-1) * x / fieldWidth;
+        x += ((-1) * x / fieldWidth) * fieldWidth;
+    }
+    if((screenWidth - x) / fieldWidth < length){
+        length = (screenWidth - x + fieldWidth) / fieldWidth;
+    }
+    for(i; i < length; i++){
+        //PlotFilledRect_32bpp(gop, x, y, fieldWidth, fieldHeight, 255);
+        Plot_Char(gop, x, y, str[i], pixel);
+        x += fieldWidth;
+        x += 1;
+    }
+}
+
+static inline void Plot_Station(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    Plot_String(gop, x, y, STATION1, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION2, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION3, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION4, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION5, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION6, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION7, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION8, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION9, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION10, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION11, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION12, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION13, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION14, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION15, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION16, 52, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, STATION17, 52, pixel);
+}
+
+static inline void Plot_D51(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    int startX = x;
+    int startY = y;
+    char *c1 = D51STR1;
+    char *c2 = D51STR2;
+    char *c3 = D51STR3;
+    char *c4 = D51STR4;
+    char *c5 = D51STR5;
+    char *c6 = D51STR6;
+    char *c7 = D51STR7;
+    Plot_String(gop, x, y, c1, 56, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c2, 56, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c3, 56, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c4, 56, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c5, 56, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c6, 56, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c7, 56, pixel);
+    y += fieldHeight;
+    if(D51State == 0){
+        char *w1 = D51WHL41;
+        char *w2 = D51WHL42;
+        char *w3 = D51WHL43;
+        Plot_String(gop, x, y, w1, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w3, 56, pixel);
+    }else if(D51State == 1){
+        char *w1 = D51WHL31;
+        char *w2 = D51WHL32;
+        char *w3 = D51WHL33;
+        Plot_String(gop, x, y, w1, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w3, 56, pixel);
+    }else if(D51State == 2){
+        char *w1 = D51WHL21;
+        char *w2 = D51WHL22;
+        char *w3 = D51WHL23;
+        Plot_String(gop, x, y, w1, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w3, 56, pixel);
+    }else if(D51State == 3){
+        char *w1 = D51WHL11;
+        char *w2 = D51WHL12;
+        char *w3 = D51WHL13;
+        Plot_String(gop, x, y, w1, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w3, 56, pixel);
+    }else if(D51State == 4){
+        char *w1 = D51WHL61;
+        char *w2 = D51WHL62;
+        char *w3 = D51WHL63;
+        Plot_String(gop, x, y, w1, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w3, 56, pixel);
+    }else if(D51State == 5){
+        char *w1 = D51WHL51;
+        char *w2 = D51WHL52;
+        char *w3 = D51WHL53;
+        Plot_String(gop, x, y, w1, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 56, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w3, 56, pixel);
+    }
+}
+
+static inline void Plot_Coal(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    int startX = x;
+    int startY = y;
+    char *c1 = COAL03;
+    char *c2 = COAL04;
+    char *c3 = COAL05;
+    char *c4 = COAL06;
+    char *c5 = COAL07;
+    char *c6 = COAL08;
+    char *c7 = COAL09;
+    char *c8 = COAL10;
+    Plot_String(gop, x, y, c1, 30, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c2, 30, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c3, 30, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c4, 30, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c5, 30, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c6, 30, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c7, 30, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c8, 30, pixel);
+    y += fieldHeight;
+    
+}
+
+static inline void Plot_Car(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    int startX = x;
+    int startY = y;
+    char *c1 = LCAR1;
+    char *c2 = LCAR2;
+    char *c3 = LCAR3;
+    char *c4 = LCAR4;
+    char *c5 = LCAR5;
+    char *c6 = LCAR6;
+    Plot_String(gop, x, y, c1, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c2, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c3, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c4, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c5, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c6, 21, pixel);
+}
+
+static inline void Plot_LCoal(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    int startX = x;
+    int startY = y;
+    char *c1 = LCOAL1;
+    char *c2 = LCOAL2;
+    char *c3 = LCOAL3;
+    char *c4 = LCOAL4;
+    char *c5 = LCOAL5;
+    char *c6 = LCOAL6;
+    Plot_String(gop, x, y, c1, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c2, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c3, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c4, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c5, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c6, 21, pixel);
+}
+
+static inline void Plot_Logo(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    int startX = x;
+    int startY = y;
+    char *c1 = LOGO1;
+    char *c2 = LOGO2;
+    char *c3 = LOGO3;
+    char *c4 = LOGO4;
+    Plot_String(gop, x, y, c1, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c2, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c3, 21, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c4, 21, pixel);
+    y += fieldHeight;
+    if(LogoState == 0){
+        char *w1 = LWHL31;
+        char *w2 = LWHL32;
+        Plot_String(gop, x, y, w1, 21, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 21, pixel);
+    }else if(LogoState == 1){
+        char *w1 = LWHL21;
+        char *w2 = LWHL22;
+        Plot_String(gop, x, y, w1, 21, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 21, pixel);
+    }else if(LogoState == 2){
+        char *w1 = LWHL11;
+        char *w2 = LWHL12;
+        Plot_String(gop, x, y, w1, 21, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 21, pixel);
+    }else if(LogoState == 3){
+        char *w1 = LWHL61;
+        char *w2 = LWHL62;
+        Plot_String(gop, x, y, w1, 21, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 21, pixel);
+    }else if(LogoState == 4){
+        char *w1 = LWHL51;
+        char *w2 = LWHL52;
+        Plot_String(gop, x, y, w1, 21, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 21, pixel);
+    }else if(LogoState == 5){
+        char *w1 = LWHL41;
+        char *w2 = LWHL42;
+        Plot_String(gop, x, y, w1, 21, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 21, pixel);
+    }
+}
+
+static inline void Plot_C51(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, int x, int y, uint32_t pixel){
+    int startX = x;
+    int startY = y;
+    char *c1 = C51STR1;
+    char *c2 = C51STR2;
+    char *c3 = C51STR3;
+    char *c4 = C51STR4;
+    char *c5 = C51STR5;
+    char *c6 = C51STR6;
+    char *c7 = C51STR7;
+    char *cWheel1 = C51WH61;
+    char *cWheel4 = C51WH64;
+    Plot_String(gop, x, y, c1, 55, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c2, 55, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c3, 55, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c4, 55, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c5, 55, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c6, 55, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, c7, 55, pixel);
+    y += fieldHeight;
+    Plot_String(gop, x, y, cWheel1, 55, pixel);
+    y += fieldHeight;
+    if(C51State == 0){
+        char *w1 = C51WH42;
+        char *w2 = C51WH43;
+        Plot_String(gop, x, y, w1, 55, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 55, pixel);
+    }else if(C51State == 1){
+        char *w1 = C51WH32;
+        char *w2 = C51WH33;
+        Plot_String(gop, x, y, w1, 55, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 55, pixel);
+    }else if(C51State == 2){
+        char *w1 = C51WH22;
+        char *w2 = C51WH23;
+        Plot_String(gop, x, y, w1, 55, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 55, pixel);
+    }else if(C51State == 3){
+        char *w1 = C51WH12;
+        char *w2 = C51WH13;
+        Plot_String(gop, x, y, w1, 55, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 55, pixel);
+    }else if(C51State == 4){
+        char *w1 = C51WH62;
+        char *w2 = C51WH63;
+        Plot_String(gop, x, y, w1, 55, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 55, pixel);
+    }else if(C51State == 5){
+        char *w1 = C51WH52;
+        char *w2 = C51WH53;
+        Plot_String(gop, x, y, w1, 55, pixel);
+        y += fieldHeight;
+        Plot_String(gop, x, y, w2, 55, pixel);
+    }
+    y += fieldHeight;
+    Plot_String(gop, x, y, cWheel4, 55, pixel);
+}
+
+void drawD51(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct train* D51, int x, int y, uint32_t pixel){
+    D51->startPosX = x;
+    D51->baselineY = y;
+    D51->endPosX = D51->startPosX + 54 * fieldWidth;
+    D51->drawPosX = D51->startPosX + 3;
+    D51->drawPosY = D51->baselineY - 10 * fieldHeight + 6;
+    if(D51->endPosX > 0 && D51->startPosX < screenWidth){
+        Plot_D51(gop, D51->drawPosX, D51->drawPosY, pixel);
+    }
+}
+
+void drawCoal(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct train* Coal, int x, int y, uint32_t pixel){
+    Coal->startPosX = x;
+    Coal->baselineY = y;
+    Coal->endPosX = Coal->startPosX + 29 * fieldWidth;
+    Coal->drawPosX = Coal->startPosX + 3;
+    Coal->drawPosY = Coal->baselineY - 8 * fieldHeight + 6;
+    if(Coal->endPosX >= 0 || Coal->startPosX < screenWidth){
+        Plot_Coal(gop, Coal->drawPosX, Coal->drawPosY, pixel);
+    }
+}
+
+void drawCar(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct train* Car, int x, int y, uint32_t pixel){
+    Car->startPosX = x;
+    Car->baselineY = y;
+    Car->endPosX = Car->startPosX + 21 * fieldWidth;
+    Car->drawPosX = Car->startPosX + 3;
+    Car->drawPosY = Car->baselineY - 6 * fieldHeight + 6;
+    if(Car->endPosX >= 0 || Car->startPosX < screenWidth){
+        Plot_Car(gop, Car->drawPosX, Car->drawPosY, pixel);
+    }
+}
+
+void drawLCoal(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct train* LCoal, int x, int y, uint32_t pixel){
+    LCoal->startPosX = x;
+    LCoal->baselineY = y;
+    LCoal->endPosX = LCoal->startPosX + 21 * fieldWidth;
+    LCoal->drawPosX = LCoal->startPosX + 3;
+    LCoal->drawPosY = LCoal->baselineY - 6 * fieldHeight + 6;
+    if(LCoal->endPosX >= 0 || LCoal->startPosX < screenWidth){
+        Plot_LCoal(gop, LCoal->drawPosX, LCoal->drawPosY, pixel);
+    }
+}
+
+void drawLogo(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct train* Logo, int x, int y, uint32_t pixel){
+    Logo->startPosX = x;
+    Logo->baselineY = y;
+    Logo->endPosX = Logo->startPosX + 21 * fieldWidth;
+    Logo->drawPosX = Logo->startPosX + 3;
+    Logo->drawPosY = Logo->baselineY - 6 * fieldHeight + 6;
+    if(Logo->endPosX >= 0 || Logo->startPosX < screenWidth){
+        Plot_Logo(gop, Logo->drawPosX, Logo->drawPosY, pixel);
+    }
+}
+
+void drawC51(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct train* C51, int x, int y, uint32_t pixel){
+    C51->startPosX = x;
+    C51->baselineY = y;
+    C51->endPosX = C51->startPosX + 56 * fieldWidth;
+    C51->drawPosX = C51->startPosX + 3;
+    C51->drawPosY = C51->baselineY - 11 * fieldHeight + 6;
+    if(C51->endPosX >= 0 || C51->startPosX < screenWidth){
+        Plot_C51(gop, C51->drawPosX, C51->drawPosY, pixel);
+    }
+}
+
+void drawParticle(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct particle *particle, uint32_t pixel){
+    PlotPixel_32bpp(gop, particle->location->x, particle->location->y, pixel);
+}
+
+struct particle* getParticle(int x, int y){
+    struct particle *particle = AllocatePool(sizeof(struct particle));
+    particle->location = AllocatePool(sizeof(struct vector));
+    particle->velocity = AllocatePool(sizeof(struct vector));
+    particle->acceleration = AllocatePool(sizeof(struct vector));
+    particle->location->x = x;
+    particle->location->y = y;
+    return particle;
+}
+
+void FreeParticle(struct particle *particle){
+    FreePool(particle->location);
+    FreePool(particle->velocity);
+    FreePool(particle->acceleration);
+    FreePool(particle);
+}
+
+struct ParticleSystem* getParticleSystem(int x, int y, int number, int lifespan, float emissionRate, float accelX, float accelY, struct vector *velX, struct vector *velY){
+    struct ParticleSystem *ps = AllocatePool(sizeof(struct ParticleSystem));
+    ps->numberOfParticels = number;
+    ps->startPos = AllocatePool(sizeof(struct vector));
+    ps->startPos->x = x;
+    ps->startPos->y = y;
+    ps->startForce = AllocatePool(sizeof(struct vector));
+    ps->startForce->x = accelX;
+    ps->startForce->y = accelY;
+    ps->velocityX = velX;
+    ps->velocityY = velY;
+    ps->lifespan = lifespan;
+    ps->emissionRate = emissionRate;
+    EFI_TIME time;
+    uefi_call_wrapper(RT->GetTime, 1, &time, NULL);
+    ps->lastSpawn = time.Second;
+    ps->spawned = 0;
+    ps->particle_array = AllocatePool(ps->numberOfParticels * sizeof(struct particle *));
+    for (int i = 0; i < ps->numberOfParticels; i++) {
+        ps->particle_array[i] = NULL;
+    }
+    spawnParticlePS(ps);
+    return ps;
+}
+
+void spawnParticlePS(struct ParticleSystem *ps){
+    EFI_TIME time;
+    uefi_call_wrapper(RT->GetTime, 1, &time, NULL);
+    if(time.Second == ps->lastSpawn){
+        for(int i = 0; i < ps->numberOfParticels; i++){
+            if(!ps->particle_array[i] && ps->spawned < ps->emissionRate){
+                ps->particle_array[i] = getParticle(ps->startPos->x + mapValues(mersenne_twister(), 0, 1, -20, 20), ps->startPos->y);
+                ps->particle_array[i]->lifespan = ps->lifespan;
+                applyVelocity(ps->particle_array[i], mapValues(mersenne_twister(), 0, 1, ps->velocityX->x, ps->velocityX->y), mapValues(mersenne_twister(), 0, 1, ps->velocityY->x, ps->velocityY->y));
+                applyForce(ps->particle_array[i], ps->startForce->x, ps->startForce->y);
+                ps->spawned++;
+                i += 10;
+            }
+        }
+    }else{
+        ps->lastSpawn = time.Second;
+        ps->spawned = 0;
+    }
+}
+
+void addVelocityPS(struct ParticleSystem *ps, float velXmin, float velXmax, float velYmin, float velYmax){
+    for(int i = 0; i < ps->numberOfParticels; i++){
+        if(ps->particle_array[i]){
+            applyVelocity(ps->particle_array[i], mapValues(mersenne_twister(), 0, 1, velXmin, velXmax), mapValues(mersenne_twister(), 0, 1, velYmin, velYmax));
+        }
+    }
+}
+
+void applyForcePS(struct ParticleSystem *ps, float accelX, float accelY){
+    for(int i = 0; i < ps->numberOfParticels; i++){
+        if(ps->particle_array[i]){
+            applyForce(ps->particle_array[i], accelX, accelY);
+        }
+    }
+}
+
+void runPS(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct ParticleSystem *ps, uint32_t pixel){
+    for (int i = 0; i < ps->numberOfParticels; i++) {
+        if(ps->particle_array[i]){
+            drawParticle(gop, ps->particle_array[i], pixel);
+            updateParticle(ps->particle_array[i]);
+            if(isDead(ps->particle_array[i])){
+                FreeParticle(ps->particle_array[i]);
+                ps->particle_array[i] = NULL;
+            }else{
+                drawParticle(gop, ps->particle_array[i], pixel);
+            }
+        }
+    }
+    spawnParticlePS(ps);
+}
+
+void FreeParticleSystem(struct ParticleSystem *ps){
+    for(int i = 0; i < ps->numberOfParticels; i++){
+        if(ps->particle_array[i]){
+            FreeParticle(ps->particle_array[i]);
+        }
+    }
+    FreePool(ps->startPos);
+    FreePool(ps->startForce);
+    FreePool(ps->velocityX);
+    FreePool(ps->velocityY);
+}
+
+void drawTrain(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct train* train, int x, int y, uint32_t pixel){
+    if(train){
+        train->draw(gop, train, x, y, pixel);
+        x = train->endPosX;
+        drawTrain(gop, train->next, x, y, pixel);
+    }
+}
+
+int calculateTrainLenght(struct train* train){
+    if(train){
+        return calculateTrainLenght(train->next) + (train->endPosX - train->startPosX);
+    }else{
+        return 0;
+    }
+}
+
+void driveTrain(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop, struct train* train, int x, int y){
+    int white = (255 << 16) + (255 << 8) + 255;
+    int black = 0;
+    drawTrain(gop, train, x, y, white);
+    int stop = calculateTrainLenght(train);
+    stop *= -1;
+    while(x > stop){
+        drawTrain(gop, train, x, y, white);
+        uefi_call_wrapper(ST->BootServices->Stall, 1, 70000);
+        drawTrain(gop, train, x, y, black);
+        D51State = (D51State + 1) % 6;
+        LogoState = (LogoState + 1) % 6;
+        C51State = (C51State + 1) % 6;
+        x -= 5;
+    }
+}
+
+void FreeTrain(struct train *train){
+    if(train->next){
+        FreeTrain(train->next);
+    }
+    FreePool(train);
+}
+
+struct train * parseTrain(char *trainStr, int trainStrLen){
+    struct train *Head = AllocatePool(sizeof(struct train));
+    Head->next = NULL;
+    struct train *actual = Head;
+    int index = 0;
+    int end = 0;
+    if((char)trainStr[index] == '{' && (char)trainStr[trainStrLen -1] == '}'){
+        index++;
+        while((char)trainStr[end] != '}'){
+            while((char)trainStr[end] != ' '){
+                end++;
+            }
+            if(matchstring(trainStr + index, "D51", 3)){
+                if(DEBUG){
+                    Print(L"D51\r\n");
+                }
+                actual->draw = drawD51;
+                actual->next = NULL;
+            }
+            if(matchstring(trainStr + index, "C51", 3)){
+                if(DEBUG){
+                    Print(L"C51\r\n");
+                }
+                actual->draw = drawC51;
+                actual->next = NULL;
+            }
+            if(matchstring(trainStr + index, "Coal", 4)){
+                if(DEBUG){
+                    Print(L"Coal\r\n");
+                }
+                actual->draw = drawCoal;
+                actual->next = NULL;
+            }
+            if(matchstring(trainStr + index, "Logo", 4)){
+                if(DEBUG){
+                    Print(L"Logo\r\n");
+                }
+                actual->draw = drawLogo;
+                actual->next = NULL;
+            }
+            if(matchstring(trainStr + index, "Car", 3)){
+                if(DEBUG){
+                    Print(L"Car\r\n");
+                }
+                actual->draw = drawCar;
+                actual->next = NULL;
+            }
+            if(matchstring(trainStr + index, "LCoal", 5)){
+                if(DEBUG){
+                    Print(L"LCoal\r\n");
+                }
+                actual->draw = drawLCoal;
+                actual->next = NULL;
+            }
+            index = end + 1;
+            end += 2;
+            if(end < trainStrLen - 1){
+                actual->next = AllocatePool(sizeof(struct train));
+                actual = actual->next;
+            }
+        }
+    }else{
+        Print(L"Invalid Train Config\r\n");
+    }
+    return Head;
+}
+
+EFI_STATUS
+EFIAPI
+efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
+{
+    InitializeLib(ImageHandle, SystemTable);
+    SystemTable->BootServices->SetWatchdogTimer(0, 0, 0, NULL);
+    uefi_call_wrapper(ST->ConOut->ClearScreen, 1, ST->ConOut);
+    //CHAR16 *Str =  L"yehaw\n\r";
+    //Print(Str);
+    
+    char* s[1];
+    s[0] = ' ';
+    //dimensionSelection();
+    uefi_call_wrapper(ST->ConOut->ClearScreen, 1, ST->ConOut);
+    uefi_call_wrapper(ST->ConOut->SetCursorPosition, 1, ST->ConOut, 0, 0);
+    //main(0, s, &my_mvaddch, cols, rows);
+    uefi_call_wrapper(ST->ConOut->ClearScreen, 1, ST->ConOut);
+    uefi_call_wrapper(ST->ConOut->SetCursorPosition, 1, ST->ConOut, 0, 0);
+    if(DEBUG){
+        Print(L"Check for GUID\n\r");
+    }
+    EFI_HANDLE handles[100];
+    EFI_DEVICE_PATH *devicePath;
+    EFI_BLOCK_IO *blockIOProtocol;
+    UINTN bufferSize = 100 * sizeof(EFI_HANDLE);
+    int i, noOfHandles;
+    
+    EFI_STATUS status2 = uefi_call_wrapper(ST->BootServices->LocateHandle, 1,
+                                           ByProtocol, 
+                                           &BlockIoProtocolGUID, 
+                                           NULL, /* Ignored for AllHandles or ByProtocol */
+                                           &bufferSize, 
+                                           handles);
+    noOfHandles = bufferSize == 0 ? 0 : bufferSize / sizeof(EFI_HANDLE);
+    char handleout[200] = "Found Handles: ";
+    map(noOfHandles, handleout, 16);
+    int index = mystrcpy(handleout, 15, L"\n\r", 4);
+    //strcat(handleout, "\n\r");
+    Print(a2u(handleout));
+    if(status2 == EFI_NOT_FOUND){
+        Print(L"No Matching Search\r\n");
+        return status2;
+    }else if (status2 == EFI_BUFFER_TOO_SMALL){
+        Print(L"BuffersizeToSmall\r\n");
+        return status2;
+    }else if (status2 == EFI_INVALID_PARAMETER){
+        Print(L"Parameter falsch\r\n");
+        return status2;
+    }
+    if (EFI_ERROR(status2)) {
+        Print(L"Failed to LocateHandles!\r\n");
+        return status2;
+    }
+    for (i = 0; i < noOfHandles; i++) {
+        status2 = uefi_call_wrapper(ST->BootServices->HandleProtocol, 1, handles[i], &DevicePathGUID, (void *) &devicePath);
+        if (EFI_ERROR(status2) || devicePath == NULL) {
+            Print(L"Skipped handle, device path error!\r\n");
+            continue;
+        }
+        status2 = uefi_call_wrapper(ST->BootServices->HandleProtocol, 1, handles[i], &BlockIoProtocolGUID, (void *) &blockIOProtocol);
+        if (EFI_ERROR(status2) || blockIOProtocol == NULL) {
+            Print(L"Skipped handle, block io protocol error!\r\n");
+            continue;
+        }
+        printDevicePath(devicePath);
+        char f[200];
+        int index2 = mystrcpy(f, 0, L"Media ID: ", 10);
+        //strcat(f, "Media ID:");
+        map(blockIOProtocol->Media->MediaId, f, 10);
+        index2 = mystrcpy(f, index2, L"\n\r", 4);
+        //strcat(f, "\n\r");
+        //Print(a2u(f));
+    }
+    Print(L"\r\n\r\nSimpleFileSystemProtocol\r\n");
+    EFI_GUID sfspGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+    EFI_GUID gEfiLoadedImageProtocolGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem;
+    EFI_HANDLE* handless = NULL;   
+    UINTN handleCount = 0;
+    //    EFI_STATUS efiStatus = uefi_call_wrapper(ST->BootServices->LocateHandleBuffer, 1, ByProtocol, &sfspGuid, NULL, &handleCount, &handless);
+    EFI_STATUS efiStatus = uefi_call_wrapper(ST->BootServices->HandleProtocol, 1, ImageHandle, &gEfiLoadedImageProtocolGuid, (void**)&LoadedImage);
+    
+    //    for (index = 0; index < (int)handleCount; ++ index)
+    //    {
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* fs = NULL;
+    EFI_DEVICE_PATH *Dp;
+    //efiStatus = uefi_call_wrapper(ST->BootServices->HandleProtocol, 1, handless[index], &sfspGuid, (void**)&fs);
+    efiStatus = uefi_call_wrapper(ST->BootServices->HandleProtocol, 1, LoadedImage->DeviceHandle, &sfspGuid, (void**)&fs);
+    if (EFI_ERROR(efiStatus) || fs == NULL){
+        Print(L"Skipped handle, Simple File System Error error!\r\n");
+    }
+    //          efiStatus = uefi_call_wrapper(ST->BootServices->HandleProtocol, 1, handles[i], &DevicePathGUID, (void *) &devicePath);
+    if (EFI_ERROR(status2) || devicePath == NULL) {
+        Print(L"Skipped handle, device path error!\r\n");
+    }
+    //printDevicePath(devicePath);
+    Print(L"Try To Open File System\r\n");
+    struct choot_conf chootConf = parseChootChootLoaderConf(fs, L"EFI\\chootloader\\choot.conf");
+    printChootConf(chootConf);
+    struct gummiboot_conf conf = parseGummibootConf(fs, L"loader\\loader.conf");
+    printGummiBootConf(conf);
+    struct file entries_file = openFile(fs, L"loader\\entries\\", EFI_FILE_MODE_READ, EFI_FILE_READ_ONLY);
+    int entryCount = scanEntries(entries, fs, entries_file.file, entries_file.file);
+    closeFile(entries_file);
+    for(int i = 0; i < entryCount; i++){
+        Print(L"%u\r\n", i);
+        printLoaderEntry(entries[i]);
+    }
+    efiStatus = uefi_call_wrapper(ST->BootServices->OpenProtocol, 1, ImageHandle, &gEfiLoadedImageProtocolGuid, (void**)&LoadedImage);
+    UINTN sourcebufferSize = 0;
+    VOID *sourcebuffer = NULL;
+    /*
+    if(EFI_SUCCESS != LoadImg(fs, L"initramfs-linux.img", &sourcebuffer, &sourcebufferSize)){
+        Print(L"Something went wrong Loading: %u\r\n", efiStatus);
+    }
+    */
+    //Print(L"Options: %s\r\n", LoadedImage->LoadOptions);
+    //CHAR16* options = L"initrd=/initramfs-linux.img";
+    //Print(L"Length: %u\r\n", stringLen(options));
+    efiStatus = uefi_call_wrapper(ST->BootServices->CloseProtocol, 1, ImageHandle, &gEfiLoadedImageProtocolGuid);
+    //executeImage(ImageHandle, LoadedImage->DeviceHandle, /*L"EFI\\tetris.efi"*/L"vmlinuz-linux", NULL, 0, options, stringLen(options)*2);
+    //executeImage(ImageHandle, LoadedImage->DeviceHandle, L"EFI\\tetris.efi", NULL, 0, NULL, 0);
+    //simpleBoot(ImageHandle, LoadedImage->DeviceHandle);
+    
+    //uefi_call_wrapper(ST->BootServices->Stall, 1, 70000000);
+    if(matchstring(chootConf.mode, "simple", 6)){
+        simpleBoot(ImageHandle, LoadedImage->DeviceHandle);
+        freeEntries();
+        return EFI_SUCCESS;
+    }
+    struct train *train = parseTrain(chootConf.train, chootConf.trainLen);    
+    
+    Print(L"Try GOP\r\n");
+    EFI_GUID gopGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
+
+    efiStatus = uefi_call_wrapper(BS->LocateProtocol, 3, &gopGuid, NULL, (void**)&gop);
+    if(EFI_ERROR(efiStatus))
+        Print(L"Unable to locate GOP\r\n");
+    
+    Print(L"Opened GOP\r\n");
+    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *info;
+    UINTN SizeOfInfo, numModes, nativeMode;
+    efiStatus = uefi_call_wrapper(gop->QueryMode, 4, gop, gop->Mode==NULL?0:gop->Mode->Mode, &SizeOfInfo, &info);
+    // this is needed to get the current video mode
+    if (efiStatus == EFI_NOT_STARTED)
+        Print(L"Mode\r\n");
+    if(EFI_ERROR(efiStatus)) {
+        Print(L"Unable to get native mode\r\n");
+    } else {
+        Print(L"Set ModeVariable\r\n");
+        nativeMode = gop->Mode->Mode;
+        numModes = gop->Mode->MaxMode;
+    }
+    Print(L"ModeList\r\n");
+    for (i = 0; i < numModes; i++) {
+        efiStatus = uefi_call_wrapper(gop->QueryMode, 4, gop, i, &SizeOfInfo, &info);
+        Print(L"mode %03d width %d height %d format %x%s\r\n",
+            i,
+            info->HorizontalResolution,
+            info->VerticalResolution,
+            info->PixelFormat,
+            i == nativeMode ? "(current)" : ""
+        );
+    }
+    Print(L"Framebuffer address %x size %d, width %d height %d pixelsperline %d\r\n",
+    gop->Mode->FrameBufferBase,
+    gop->Mode->FrameBufferSize,
+    gop->Mode->Info->HorizontalResolution,
+    gop->Mode->Info->VerticalResolution,
+    gop->Mode->Info->PixelsPerScanLine);
+    int selectedMode = 3;
+    efiStatus = uefi_call_wrapper(gop->SetMode, 2, gop, selectedMode);
+    efiStatus = uefi_call_wrapper(gop->QueryMode, 4, gop, selectedMode, &SizeOfInfo, &info);
+    screenWidth = gop->Mode->Info->HorizontalResolution;
+    screenHeight = gop->Mode->Info->VerticalResolution;
+    
+    /*
+    struct train *D51 = AllocatePool(sizeof(struct train));
+    struct train *D512 = AllocatePool(sizeof(struct train));
+    struct train *Coal = AllocatePool(sizeof(struct train));
+    struct train *Coal2 = AllocatePool(sizeof(struct train));
+    struct train *Car = AllocatePool(sizeof(struct train));
+    struct train *LCoal = AllocatePool(sizeof(struct train));
+    struct train *Logo = AllocatePool(sizeof(struct train));
+    struct train *C51 = AllocatePool(sizeof(struct train));
+
+    D51->next = D512;
+    D51->draw = drawD51;
+    D512->next = Coal;
+    D512->draw = drawD51;
+    Coal->next = Coal2;
+    Coal->draw = drawCoal;
+    Coal2->next = Car;
+    Coal2->draw = drawCoal;
+    Car->next = LCoal;
+    Car->draw = drawCar;
+    LCoal->next = Logo;
+    LCoal->draw = drawLCoal;
+    Logo->next = C51;
+    Logo->draw = drawLogo;
+    C51->next = NULL;
+    C51->draw = drawC51;
+    */
+    
+    /*
+    struct vector *velX = AllocatePool(sizeof(struct vector));
+    velX->x = 0;
+    velX->y = 0;
+    struct vector *velY = AllocatePool(sizeof(struct vector));
+    velY->x = -0.5;
+    velY->y = 0;
+    struct ParticleSystem *ps = getParticleSystem(150, 500, 100000, 200, 50, 0, -0.03, velX, velY);
+    */
+    
+    int x = screenWidth;
+    int y = 600;
+    //driveTrain(gop, C51, x, y);
+    
+    //drawCar(gop, Car, x - 700, y - 300, 255);
+    //drawLCoal(gop, LCoal, x - 700, y - 300, 255);
+    //drawLogo(gop, Logo, x - 700, y - 300, 255);
+    //drawC51(gop, C51, x - 700, y - 300, 255);
+    
+    //Plot_Station(gop, 100, y - 17 * fieldHeight, 255);
+    driveTrain(gop, train, x, y);
+    //Plot_Station(gop, 100, y - 17 * fieldHeight, background);
+    
+    
+    /*
+    FreePool(D51);
+    FreePool(D512);
+    FreePool(Coal);
+    FreePool(Coal2);
+    FreePool(Car);
+    FreePool(LCoal);
+    FreePool(Logo);
+    FreePool(C51);
+    */
+    
+    //FreeTrain(train);
+    
+    /*
+    fieldWidth *= 1.3;
+    fieldHeight *= 1.3;
+    */
+    Plot_String(gop, 150, 150, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", 26, 255 << 8);
+    Plot_String(gop, 150, 151 + fieldHeight, "abcdefghijklmnopqrstuvwxyz", 26, 255 << 8);
+    Plot_String(gop, 150, 152 + 2 * fieldHeight, "!\"#$%&\\()*+'-_./0123456789", 26, 255 << 8);
+    Plot_String(gop, 150, 153 + 3 * fieldHeight, ":;<=>?@[~]@{}", 13, 255 << 8);
+    
+    
+    
+    //freeEntries();
+    return EFI_SUCCESS;
+}
+
+//http://www.ascii-art.de/ascii/t/train.txt
