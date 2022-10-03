@@ -1,6 +1,8 @@
 # :steam_locomotive: choo-chootloader :steam_locomotive:
 This will be a bootloader like CHUGGA chugga chugga CHUGGA chugga chugga CHOO CHOOOOOOO :steam_locomotive::steam_locomotive:
 
+![Some Train](https://media1.giphy.com/media/8F3bK4aq1tCo0TLkf7/giphy.gif?cid=790b7611788b2edaea486e3280d9f0e8922aff0215e43bbb&rid=giphy.gif&ct=g)
+
 How To:
 (1)
 build the project with "make"
