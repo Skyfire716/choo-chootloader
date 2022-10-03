@@ -24,6 +24,8 @@ https://wiki.osdev.org/UEFI_Bare_Bones
 https://github.com/mtoyoda/sl
 Copyright 1993,1998,2014 Toyoda Masashi (mtoyoda@acm.org)
 
+How to make choot choot noises: <https://www.reddit.com/r/drehscheibe/comments/wxgw9v/wie_macht_die_dampflok/>
+
 ```
         /@@@@@@@\
       (@@@@@ # @@@@@\
