@@ -2731,6 +2731,35 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     driveTrain(gop, train, x, y);
     //Plot_Station(gop, 100, y - 17 * fieldHeight, background);
     
+
+    int white = (255 << 16) + (255 << 8) + 255;
+    int black = 0;
+    drawTrain(gop, train, x, y, white);
+    int stop = calculateTrainLenght(train);
+    stop *= -1;
+    while(x > stop){
+        drawTrain(gop, train, x, y, white);
+        uefi_call_wrapper(ST->BootServices->Stall, 1, 70000);
+        drawTrain(gop, train, x, y, black);
+        D51State = (D51State + 1) % 6;
+        LogoState = (LogoState + 1) % 6;
+        C51State = (C51State + 1) % 6;
+        x -= 5;
+	EFI_INPUT_KEY key;
+    	EFI_STATUS st;
+	st = uefi_call_wrapper(ST->ConIn->ReadKeyStroke, 1, ST->ConIn, &key);
+	if(st == EFI_SUCCESS){
+		if(key.ScanCode == ENTER){
+			Print(L"Select Current Train Position OS\r\n");
+		}
+	}else if(st == EFI_NOT_READY){
+	     Print(L"Read Key not ready\r\n");
+	}else if(st == EFI_DEVICE_ERROR){
+		 Print(L"Read Key Device Error\r\n");
+	}else{
+		 Print(L"Read Key Error That should not happen\r\n");
+	}
+    }
     
     /*
     FreePool(D51);
